@@ -7,16 +7,9 @@ use JSON qw(encode_json decode_json);
 use Avox::Db;
 use Data::Dump qw(dump);
 
+# this is websocket chat server /register /login /chat
 my (%clients);
 
-get '/logout' => sub {
-    my $self = shift;
-    delete $self->session->{user_id};
-    delete $self->session->{contact_id};
-    $self->redirect_to('login');
-};
-
-get '/register' => 'register';
 post '/register' => sub {
     my ($self) = @_;
     my ($login,$password, $p2) = map $self->param($_)||undef,qw(login password p2);
@@ -36,8 +29,6 @@ post '/register' => sub {
     $self->redirect_to('login');
 };
 
-get '/login' => 'login';
-
 post '/login' => sub {
     my $self = shift;
     my ($login,$password) = map $self->param($_)||undef,qw(login password);
@@ -51,19 +42,6 @@ post '/login' => sub {
     }
     $self->flash(message => 'Wrong login/password');
     $self->redirect_to('login');    
-};
-
-get '/' => sub {
-    my $self = shift;
-    my $user_id = $self->session->{user_id};
-    $self->redirect_to('login') and return 0 unless $user_id && $clients{$user_id};
-    app->log->debug('user_id: '.$user_id);        
-    my $user = sql_hash("select id,login from user where id=?",$user_id);
-    my $contacts = encode_json {get_contacts($user_id)};
-    app->log->debug('contacts: '.$contacts);        
-    app->log->debug('u: '.encode_json $user);        
-    $self->stash( contacts => $contacts, u => encode_json $user, user_name => $user->{login} );
-    $self->render('index');
 };
 
 sub send_json {
@@ -119,6 +97,31 @@ websocket '/chat' => sub {
         }
     );
 };
+
+# this is web client UI
+get '/' => sub {
+    my $self = shift;
+    my $user_id = $self->session->{user_id};
+    $self->redirect_to('login') and return 0 unless $user_id && $clients{$user_id};
+    app->log->debug('user_id: '.$user_id);        
+    my $user = sql_hash("select id,login from user where id=?",$user_id);
+    my $contacts = encode_json {get_contacts($user_id)};
+    app->log->debug('contacts: '.$contacts);        
+    app->log->debug('u: '.encode_json $user);        
+    $self->stash( contacts => $contacts, u => encode_json $user, user_name => $user->{login} );
+    $self->render('index');
+};
+
+get '/logout' => sub {
+    my $self = shift;
+    delete $self->session->{user_id};
+    delete $self->session->{contact_id};
+    $self->redirect_to('login');
+};
+
+get '/register' => 'register';
+
+get '/login' => 'login';
 
 app->start;
 
