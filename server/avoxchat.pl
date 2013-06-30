@@ -1,5 +1,4 @@
-use warnings;
-use strict;
+
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Mojolicious::Lite;
@@ -9,6 +8,8 @@ use Data::Dump qw(dump);
 
 # this is websocket chat server /register /login /chat
 my (%clients);
+
+app->secret('KoeeKwwlPqlddpLdn3!3#@4');
 
 post '/register' => sub {
     my ($self) = @_;
@@ -47,9 +48,9 @@ post '/login' => sub {
 sub send_json {
     my ($tx,$hash) = @_;
     my $json = encode_json($hash);
-    app->log->debug(sprintf 'send_json: %s', $json);
     $tx->send($json);
-    app->log->debug(sprintf 'sent_json: %s', $json);
+    my $log = app->log;
+    $log->debug(sprintf 'sent_json: %s', $json) if $log;
 }
 
 sub send_to_contacts {
@@ -64,10 +65,11 @@ sub send_to_contacts {
     # send to all active clients who has $user in their contact list
     send_json( $clients{$_}, $hash ) for @contacts;
 }
-    
+
 websocket '/chat' => sub {
     my $self = shift;
     my $user_id = $self->session->{user_id};
+    app->log->debug(sprintf 'Client %s connected: %s', $user_id, $self->tx);
     Mojo::IOLoop->stream($self->tx->connection)->timeout(600); # increase timeout to 5 minutes
     app->log->debug(sprintf 'Client %s connected: %s', $user_id, $self->tx);
     my $mytx = $self->tx;
@@ -90,10 +92,12 @@ websocket '/chat' => sub {
 
     $self->on(finish =>
         sub {
-            app->log->debug('Client disconnected');
+            my $self = shift;
+            my $log = $self->app->log;
+            $log->debug("Client $user_id disconnected") if $log;
             delete $clients{$user_id};
             sql_exec "delete from user_session where user_id=?", $user_id;
-            send_to_contacts $user_id, { event => 'offline', user_id => $user_id };
+            send_to_contacts $user_id, { event => 'offline', user_id => $user_id } if $log;
         }
     );
 };
